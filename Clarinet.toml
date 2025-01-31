@@ -8,6 +8,10 @@ requirements = []
 path = "contracts/commodities.clar"
 depends_on = []
 
+[contracts.escrow]
+path = "contracts/escrow.clar"
+depends_on = []
+
 [contracts.trade-grid]
 path = "contracts/trade-grid.clar"
 depends_on = []
