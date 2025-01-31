@@ -33,25 +33,30 @@
 
 ;; Public Functions
 (define-public (create-order (commodity-id uint) (quantity uint) (price uint))
-  (let ((order-id (var-get next-order-id)))
-    (map-set orders
-      { order-id: order-id }
-      {
-        seller: tx-sender,
-        commodity-id: commodity-id,
-        quantity: quantity,
-        price: price,
-        status: "active"
-      }
+  (begin
+    (asserts! (> quantity u0) (err err-invalid-quantity))
+    (asserts! (> price u0) (err err-invalid-price))
+    (let ((order-id (var-get next-order-id)))
+      (map-set orders
+        { order-id: order-id }
+        {
+          seller: tx-sender,
+          commodity-id: commodity-id,
+          quantity: quantity,
+          price: price,
+          status: "active"
+        }
+      )
+      (var-set next-order-id (+ order-id u1))
+      (ok order-id)
     )
-    (var-set next-order-id (+ order-id u1))
-    (ok order-id)
   )
 )
 
 (define-public (cancel-order (order-id uint))
   (let ((order (unwrap! (map-get? orders {order-id: order-id}) (err u404))))
     (asserts! (is-eq tx-sender (get seller order)) (err u403))
+    (asserts! (is-eq (get status order) "active") (err u401))
     (ok (map-set orders
       { order-id: order-id }
       (merge order { status: "cancelled" })
