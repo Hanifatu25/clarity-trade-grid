@@ -21,27 +21,10 @@ Clarinet.test({
 });
 
 Clarinet.test({
-  name: "Ensure order creation fails with invalid inputs",
+  name: "Ensure complete trade flow works",
   async fn(chain: Chain, accounts: Map<string, Account>) {
     const wallet_1 = accounts.get("wallet_1")!;
-    
-    let block = chain.mineBlock([
-      Tx.contractCall("trade-grid", "create-order", [
-        types.uint(1),
-        types.uint(0), // invalid quantity
-        types.uint(50)
-      ], wallet_1.address)
-    ]);
-    
-    assertEquals(block.receipts.length, 1);
-    block.receipts[0].result.expectErr(102); // err-invalid-quantity
-  },
-});
-
-Clarinet.test({
-  name: "Ensure can cancel active order only",
-  async fn(chain: Chain, accounts: Map<string, Account>) {
-    const wallet_1 = accounts.get("wallet_1")!;
+    const wallet_2 = accounts.get("wallet_2")!;
     
     let block = chain.mineBlock([
       Tx.contractCall("trade-grid", "create-order", [
@@ -49,9 +32,9 @@ Clarinet.test({
         types.uint(100),
         types.uint(50)
       ], wallet_1.address),
-      Tx.contractCall("trade-grid", "cancel-order", [
+      Tx.contractCall("trade-grid", "execute-trade", [
         types.uint(1)
-      ], wallet_1.address)
+      ], wallet_2.address)
     ]);
     
     assertEquals(block.receipts.length, 2);
