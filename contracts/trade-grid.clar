@@ -6,6 +6,8 @@
 (define-constant err-invalid-price (err u101))
 (define-constant err-invalid-quantity (err u102))
 (define-constant err-order-not-found (err u103))
+(define-constant err-commodity-not-found (err u104))
+(define-constant err-insufficient-balance (err u105))
 
 ;; Data Maps
 (define-map orders
@@ -36,40 +38,51 @@
   (begin
     (asserts! (> quantity u0) (err err-invalid-quantity))
     (asserts! (> price u0) (err err-invalid-price))
-    (let ((order-id (var-get next-order-id)))
-      (map-set orders
-        { order-id: order-id }
-        {
-          seller: tx-sender,
-          commodity-id: commodity-id,
-          quantity: quantity,
-          price: price,
-          status: "active"
-        }
+    (let ((commodity (unwrap! (map-get? commodities {commodity-id: commodity-id}) 
+                            (err err-commodity-not-found))))
+      (asserts! (is-eq tx-sender (get owner commodity)) (err err-owner-only))
+      (asserts! (>= (contract-call? .commodities get-balance tx-sender) quantity)
+               (err err-insufficient-balance))
+      (let ((order-id (var-get next-order-id)))
+        (map-set orders
+          { order-id: order-id }
+          {
+            seller: tx-sender,
+            commodity-id: commodity-id,
+            quantity: quantity,
+            price: price,
+            status: "active"
+          }
+        )
+        (var-set next-order-id (+ order-id u1))
+        (print {event: "order-created", order-id: order-id, seller: tx-sender})
+        (ok order-id)
       )
-      (var-set next-order-id (+ order-id u1))
-      (ok order-id)
     )
-  )
-)
-
-(define-public (cancel-order (order-id uint))
-  (let ((order (unwrap! (map-get? orders {order-id: order-id}) (err u404))))
-    (asserts! (is-eq tx-sender (get seller order)) (err u403))
-    (asserts! (is-eq (get status order) "active") (err u401))
-    (ok (map-set orders
-      { order-id: order-id }
-      (merge order { status: "cancelled" })
-    ))
   )
 )
 
 (define-public (execute-trade (order-id uint))
   (let (
-    (order (unwrap! (map-get? orders {order-id: order-id}) (err u404)))
-    (escrow-contract (contract-call? .escrow create-escrow (get price order)))
+    (order (unwrap! (map-get? orders {order-id: order-id}) (err err-order-not-found)))
+    (escrow-amount (* (get quantity order) (get price order)))
   )
     (asserts! (is-eq (get status order) "active") (err u401))
-    (ok true)
+    ;; Create escrow and transfer tokens
+    (match (contract-call? .escrow create-escrow escrow-amount)
+      escrow-id (begin
+        (try! (contract-call? .commodities transfer 
+                             (get quantity order) 
+                             (get seller order) 
+                             (contract-call? .escrow get-escrow-address escrow-id)))
+        (map-set orders
+          { order-id: order-id }
+          (merge order { status: "executing" })
+        )
+        (print {event: "trade-executing", order-id: order-id, escrow-id: escrow-id})
+        (ok escrow-id)
+      )
+      error (err u500)
+    )
   )
 )

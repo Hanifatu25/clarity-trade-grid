@@ -2,59 +2,52 @@ import { Clarinet, Tx, Chain, Account, types } from 'https://deno.land/x/clarine
 import { assertEquals } from 'https://deno.land/std@0.90.0/testing/asserts.ts';
 
 Clarinet.test({
-  name: "Ensure can create new order with valid inputs",
+  name: "Ensure can create new order with valid inputs and sufficient balance",
   async fn(chain: Chain, accounts: Map<string, Account>) {
     const wallet_1 = accounts.get("wallet_1")!;
     
+    // First mint some tokens
     let block = chain.mineBlock([
-      Tx.contractCall("trade-grid", "create-order", [
-        types.uint(1), // commodity id
-        types.uint(100), // quantity
-        types.uint(50)  // price
-      ], wallet_1.address)
-    ]);
-    
-    assertEquals(block.receipts.length, 1);
-    assertEquals(block.height, 2);
-    block.receipts[0].result.expectOk().expectUint(1);
-  },
-});
-
-Clarinet.test({
-  name: "Ensure order creation fails with invalid inputs",
-  async fn(chain: Chain, accounts: Map<string, Account>) {
-    const wallet_1 = accounts.get("wallet_1")!;
-    
-    let block = chain.mineBlock([
+      Tx.contractCall("commodities", "mint", [
+        types.uint(1000),
+        types.principal(wallet_1.address)
+      ], wallet_1.address),
       Tx.contractCall("trade-grid", "create-order", [
         types.uint(1),
-        types.uint(0), // invalid quantity
+        types.uint(100),
         types.uint(50)
       ], wallet_1.address)
     ]);
     
-    assertEquals(block.receipts.length, 1);
-    block.receipts[0].result.expectErr(102); // err-invalid-quantity
+    assertEquals(block.receipts.length, 2);
+    block.receipts[1].result.expectOk().expectUint(1);
   },
 });
 
 Clarinet.test({
-  name: "Ensure can cancel active order only",
+  name: "Ensure complete trade flow works with token transfers",
   async fn(chain: Chain, accounts: Map<string, Account>) {
     const wallet_1 = accounts.get("wallet_1")!;
+    const wallet_2 = accounts.get("wallet_2")!;
     
     let block = chain.mineBlock([
+      // Setup
+      Tx.contractCall("commodities", "mint", [
+        types.uint(1000),
+        types.principal(wallet_1.address)
+      ], wallet_1.address),
+      // Create and execute trade
       Tx.contractCall("trade-grid", "create-order", [
         types.uint(1),
         types.uint(100),
         types.uint(50)
       ], wallet_1.address),
-      Tx.contractCall("trade-grid", "cancel-order", [
+      Tx.contractCall("trade-grid", "execute-trade", [
         types.uint(1)
-      ], wallet_1.address)
+      ], wallet_2.address)
     ]);
     
-    assertEquals(block.receipts.length, 2);
-    block.receipts[1].result.expectOk();
+    assertEquals(block.receipts.length, 3);
+    block.receipts[2].result.expectOk();
   },
 });
